@@ -1,6 +1,9 @@
-# GV390 dissertation: The effect of Russian military action in Ukraine on anti-government sentiments
-Author: Alan Nemirovski
+# “Будем всегда служить верою и правдою Россию” An analysis of pro-government sentiments on Russian Telegram after the 2022 invasion of Ukraine
 
-Supervisor: Dr. David Woodruff
+Project reference code
 
-A dissertation written for the Government department in partial completion of the BSc in Philosophy, Politics and Economics at the London School of Economics and Political Science.
+GV390: Government Dissertation Option, 2024/25
+London School of Economics and Political Science
+
+Academic year: 2024/25
+Candidate number: 37464
