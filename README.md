@@ -1,4 +1,4 @@
-# “Будем всегда служить верою и правдою Россию”: An analysis of pro-government sentiments on Russian Telegram after the 2022 invasion of Ukraine
+# “Будем всегда служить верою и правдою России”: An analysis of pro-government sentiments on Russian Telegram after the 2022 invasion of Ukraine
 
 ***Project reference code***
 
