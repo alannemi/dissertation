@@ -5,5 +5,4 @@
 GV390: Government Dissertation Option, 2024/25 <br>
 London School of Economics and Political Science
 
-Academic year: 2024/25<br>
 **Candidate number: 37464**
