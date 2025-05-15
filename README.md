@@ -3,7 +3,9 @@
 Project reference code
 
 GV390: Government Dissertation Option, 2024/25
+
 London School of Economics and Political Science
 
 Academic year: 2024/25
+
 Candidate number: 37464
