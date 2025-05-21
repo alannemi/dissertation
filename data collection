@@ -1,1 +1,69 @@
+#Importing libraries
+from telethon import TelegramClient
+from telethon.tl.functions.messages import GetHistoryRequest
+from datetime import datetime
+import csv
 
+#Accessing the API
+api_id = '25790525'
+api_hash = '922f9265576c60004d90aa9f76053c4b'
+phone_number = '+447883067749'
+channel_username = 'Z_strana'  #Replace with target channel - re-run code for every channel that needs to be scraped
+
+start_date = datetime(1970, 1, 1)  #Earliest possible date
+end_date = datetime.now()
+
+csv_file = 'telegram_messages.csv' #CSV file to save the messages
+
+client = TelegramClient('session_name', api_id, api_hash) #Create the client and connect
+
+#Scraping the data
+async def main(): #Making sure client does not time out
+    await client.start(phone_number)
+
+    channel = await client.get_entity(channel_username)
+    print("Channel:", channel.title)
+
+    with open(csv_file, mode='w', newline='', encoding='utf-8') as file:
+        writer = csv.writer(file)
+        writer.writerow(['Date', 'Message'])  # Write the header row
+
+        # Fetch messages within the timeframe
+        offset_id = 0
+        limit = 100
+        total_messages = 0
+
+        while True:
+            history = await client(GetHistoryRequest(
+                peer=channel,
+                offset_id=offset_id,
+                offset_date=None,
+                add_offset=0,
+                limit=limit,
+                max_id=0,
+                min_id=0,
+                hash=0
+            ))
+
+            if not history.messages:
+                print("No more messages found.")
+                break
+
+            print(f"Fetched {len(history.messages)} messages in this batch.")
+
+            for message in history.messages:
+                message_date = message.date.replace(tzinfo=None)
+                if start_date <= message_date <= end_date:
+                    writer.writerow([message_date, message.message])
+                    print(f"Saved message: {message_date} - {message.message}")
+                    total_messages += 1
+                elif message_date < start_date:
+                    print("Reached messages older than the start date. Stopping.")
+                    break
+
+            offset_id = history.messages[-1].id
+
+    print(f"Total messages fetched and saved: {total_messages}")
+
+with client:
+    client.loop.run_until_complete(main())
