@@ -1,1 +1,11 @@
+#Code adapted from Dr. Zachary Dickson [MY580 - Applied Language Models Code](https://github.com/z-dickson/my580-applied-language-models/tree/main/code)
+#Importing, cleaning, and preparing the training data
 
+pip install pandas matplotlib datasets evaluate accelerate scikit-learn ipywidgets numpy
+pip install 'transformers[torch]'
+
+##Importing necessary libraries
+import pandas as pd
+from transformers import pipeline
+import matplotlib.pyplot as plt
+import numpy as np
