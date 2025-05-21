@@ -3,7 +3,6 @@ library(quanteda)
 library(tidytext)
 library(topicmodels)
 library(stopwords)
-library(wordcloud)
 library(RColorBrewer)
 
 setwd("~/Desktop/gv390 dissertation")
