@@ -1,1 +1,271 @@
+library(dplyr)
+library(readr)
+library(ggplot2)
+library(tidyr)
+library(sjlabelled)
+library(ggrepel)
+library(scales)
+library(ggpubr)
+library(plm)
+library(lmtest)
+library(lubridate)
+library(stargazer)
+library(sandwich)
+library(fixest)
+library(HonestDiD)
+library(purrr)
 
+#Loading data
+setwd("~/Desktop/gv390 dissertation")
+
+data_raw <- read_csv("V4_FINAL_classed_sentiment_telegram_data.csv") 
+
+data_raw_mutated <- data_raw %>%
+  mutate(Date = as.Date(Date))
+
+data_raw_mutated <- data_raw_mutated %>%
+  mutate(date = floor_date(Date, unit = "day"))
+
+aggregated_data <- data_raw_mutated %>%
+  group_by(predicted, classification, date) %>%
+  summarize(mean_sentiment = mean(sentiment_score, na.rm = TRUE),
+    median_sentiment = median(sentiment_score, na.rm = TRUE),
+    sd_sentiment = sd(sentiment_score, na.rm = TRUE), n = n()) %>%
+  ungroup()
+
+# Pre-treatment means
+cutoff_date <- as.Date("2022-02-24")
+
+pre_treatment_means <- aggregated_data %>%
+  filter(date < cutoff_date) %>%  # Filter for post-treatment period
+  group_by(predicted) %>%  # Group by control/treatment group
+  summarise(mean_sentiment_score = mean(mean_sentiment, na.rm = TRUE)) %>%
+  pivot_wider(names_from = predicted, values_from = mean_sentiment_score)
+
+print(pre_treatment_means)
+
+#Post-treatment means
+post_treatment_means <- aggregated_data %>%
+  filter(date >= cutoff_date) %>%  # Filter for post-treatment period
+  group_by(predicted) %>%  # Group by control/treatment group
+  summarise(mean_sentiment_score = mean(mean_sentiment, na.rm = TRUE)) %>%
+  pivot_wider(names_from = predicted, values_from = mean_sentiment_score)
+
+print(post_treatment_means)
+
+##First differences
+aggregated_data <- aggregated_data %>%
+  mutate(group = case_when(
+      predicted == "LABEL_0" & date < cutoff_date ~ "control_before",
+      predicted == "LABEL_0" & date >= cutoff_date ~ "control_after",
+      predicted == "LABEL_1" & date < cutoff_date ~ "treatment_before",
+      predicted == "LABEL_1" & date >= cutoff_date ~ "treatment_after",
+      TRUE ~ NA_character_))
+
+differences <- aggregated_data %>% # Calculate the mean sentiment_score for each of the four groups
+  group_by(group) %>%  # Group by the newly created group column
+  summarise(mean_sentiment_score = mean(mean_sentiment, na.rm = TRUE))
+
+print(differences)
+
+# Adding a 'period' column to distinguish pre- and post-treatment
+aggregated_data <- aggregated_data %>%
+  mutate(period = ifelse(date < cutoff_date, "Pre-Treatment", "Post-Treatment"))
+
+# Calculating group means for plotting
+plot_data <- aggregated_data %>%
+  group_by(period, predicted) %>%
+  summarise(mean_sentiment = mean(mean_sentiment, na.rm = TRUE)) %>%
+  ungroup()
+
+# Renaming predicted labels for better readability
+plot_data <- plot_data %>%
+  mutate(predicted = ifelse(predicted == "LABEL_0", "Control", "Treatment"))
+
+# Creating a counterfactual for the treatment group
+# Assume the counterfactual trend is parallel to the control group
+counterfactual_data <- plot_data %>%
+  filter(predicted == "Control") %>%
+  mutate(
+    predicted = "Counterfactual",
+    mean_sentiment = mean_sentiment + (plot_data %>% filter(predicted == "Treatment" & period == "Pre-Treatment") %>% pull(mean_sentiment) -
+                                         plot_data %>% filter(predicted == "Control" & period == "Pre-Treatment") %>% pull(mean_sentiment)))
+
+# Combining actual and counterfactual data
+plot_data <- bind_rows(plot_data, counterfactual_data)
+
+#Dummy variable creation
+aggregated_data <- aggregated_data %>%
+  mutate(condition = ifelse(grepl("^treatment", group), "treatment", "control"))
+
+aggregated_data <- aggregated_data %>%
+  mutate(
+    treatment = ifelse(condition == "treatment", 1, 0), 
+    post = ifelse(date >= cutoff_date, 1, 0))
+
+#Estimation via lm()
+did_model <- lm(mean_sentiment ~ treatment + post + treatment:post, data = aggregated_data)
+
+summary(did_model)
+
+clustered_se <- vcovCL(did_model, cluster = ~date)
+
+coeftest(did_model, vcov = clustered_se)
+
+#Interacting to find heterogeneous effects
+aggregated_data$classification <- relevel(factor(aggregated_data$classification), ref = "GOV")
+did_model_class_interact <- lm(mean_sentiment ~ treatment * post * classification, data = aggregated_data)
+
+summary(did_model_class_interact)
+
+clustered_se_interact <- vcovCL(did_model_class_interact, cluster = ~date)
+
+coeftest(did_model_class_interact, vcov = clustered_se_interact)
+
+#DiD stratified by classification
+gov_sent <- lm(mean_sentiment ~ treatment * post, data = subset(aggregated_data, classification == "GOV"))
+pro_gov_sent <- lm(mean_sentiment ~ treatment * post, data = subset(aggregated_data, classification == "PRO-GOV"))
+anti_gov_sent <- lm(mean_sentiment ~ treatment * post, data = subset(aggregated_data, classification == "ANTI-GOV"))
+
+summary(gov_sent)
+summary(pro_gov_sent)
+summary(anti_gov_sent)
+
+##Visualising sentiment distributions
+aggregated_data$post <- factor(aggregated_data$post,
+                               levels = c(0, 1),
+                               labels = c("Pre-treatment", "Post-treatment"))
+ggplot(aggregated_data, aes(x = mean_sentiment, fill = post)) +
+  geom_density(alpha = 0.5) +
+  facet_wrap(~ classification) +
+  labs(
+    title = "Sentiment distribution before and after invastion of Ukraine",
+    x = "Mean sentiment",
+    y = "Density",
+    fill = "Period"  # This changes the legend title) +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom",
+        legend.box.background = element_rect(color = "black", linewidth = 0.5),
+        legend.box.margin = margin(2, 2, 2, 2),
+        legend.key.width = unit(1.5, "cm"),
+        legend.spacing.x = unit(0.5, "cm"))
+
+#Proportion of sentiment categories
+aggregated_data <- aggregated_data %>%
+  mutate(sentiment_category = case_when(mean_sentiment > 0.2 ~ "Positive", mean_sentiment < 0.2 ~ "Negative", TRUE ~ "Neutral"))
+
+sentiment_props <- aggregated_data %>%
+  group_by(post, classification, sentiment_category) %>%
+  summarise(count = n(), .groups = 'drop') %>%
+  group_by(post, classification) %>%
+  mutate(prop = count / sum(count))
+
+ggplot(sentiment_props, aes(x = sentiment_category, y = prop, fill = post)) +
+  geom_col(position = "dodge") +
+  facet_wrap(~ classification) +
+  labs(title = "Sentiment composition before and after invasion of Ukraine",
+    y = "Proportion of posts",
+    x = "Sentiment category",
+    fill = "Period") +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom",
+        legend.box.background = element_rect(color = "black", linewidth = 0.5),
+        legend.box.margin = margin(2, 2, 2, 2),
+        legend.key.width = unit(1.5, "cm"),
+        legend.spacing.x = unit(0.5, "cm"))
+
+# Visualising weekly post volume
+aggregated_data <- aggregated_data %>%
+  mutate(week = floor_date(date, unit = "week"))
+
+posts_per_week <- aggregated_data %>%
+  count(week, name = "num_posts")
+
+ggplot(posts_per_week, aes(x = week, y = num_posts)) +
+  geom_col(fill = "#00bfc4") +
+  geom_vline(xintercept = as.Date("2022-02-21"),
+             linetype = "dashed", color = "black", size = 1) +
+  labs(title = "Number of posts in Telegram corpus by week",
+    x = "Week",
+    y = "Number of posts") +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+#Visualising sentiment scores of individual posts over time
+
+data_raw_mutated <- data_raw_mutated %>%
+  arrange(date) %>%
+  mutate(post_index = row_number())
+
+invasion_index <- data_raw_mutated %>%
+  filter(date >= as.Date("2022-02-24")) %>%
+  slice(1) %>%
+  pull(post_index)
+
+ggplot(data_raw_mutated, aes(x = post_index, y = sentiment_score)) +
+  geom_col(fill = "#f8766d", width = 1) +
+  geom_vline(xintercept = invasion_index, linetype = "dashed", color = "black") +
+  labs(title = "Sentiment scores of individual Telegram posts over time",
+    x = "Post (chronological order)",
+    y = "Sentiment score") +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+
+#Establishing parallel trends (visually)
+aggregated_binned <- aggregated_data %>% # 1. Bin data into clear pre/post periods (adjust time windows as needed)
+  mutate(
+    period = case_when(date < cutoff_date - months(12) & date > cutoff_date - months(24) ~ "Early Pre-treatment",
+                      date >= cutoff_date - months(12) & date < cutoff_date ~ "Late Pre-treatment",
+                      date >= cutoff_date & date < cutoff_date + months(12) ~ "Early Post-treatment",
+                      date >= cutoff_date + months(12) & date < cutoff_date + months(24) ~ "Late Post-treatment",
+                      TRUE ~ NA_character_), period = factor(period, levels = c("Early Pre-treatment", "Late Pre-treatment", "Early Post-treatment", "Late Post-treatment"))) %>%
+  group_by(predicted, period) %>%
+  summarise(mean_sentiment = mean(mean_sentiment, na.rm = TRUE)) %>%
+  filter(!is.na(period))
+
+counterfactual <- aggregated_binned %>%
+  pivot_wider(names_from = predicted, values_from = mean_sentiment) %>%
+  mutate(control_change = LABEL_0 - lag(LABEL_0), baseline_diff = LABEL_1[period == "Early Pre-treatment"] - LABEL_0[period == "Early Pre-treatment"]) %>%
+  mutate(counterfactual = case_when(
+      period == "Early Pre-treatment" ~ LABEL_1,
+      period == "Late Pre-treatment" ~ LABEL_1,
+      TRUE ~ LABEL_0 + baseline_diff)) %>%
+  select(period, mean_sentiment = counterfactual) %>%
+  mutate(predicted = "LABEL_1", is_counterfactual = TRUE)
+
+plot_data <- aggregated_binned %>%
+  mutate(is_counterfactual = FALSE) %>%
+  bind_rows(counterfactual)
+
+ggplot(plot_data, aes(x = period, y = mean_sentiment, color = predicted, group = interaction(predicted, is_counterfactual), linetype = is_counterfactual)) +
+  geom_line(linewidth = 1) + geom_point(size = 3) +
+  geom_vline(xintercept = 2.5, linetype = "dashed", color = "black", linewidth = 0.8) +
+  scale_color_manual(name = "Group", labels = c("Control", "Treatment", "Treatment (Counterfactual)"), values = c("LABEL_0" = "#f8766d", "LABEL_1" = "#00bfc4")) +
+  scale_linetype_manual(values = c("FALSE" = "solid", "TRUE" = "dashed"), labels = c("Actual", "Counterfactual"), name = "") +
+  scale_y_continuous(limits = c(0, 0.5), breaks = seq(0, 0.5, 0.1)) +  # Y-axis 0–1
+  labs(title = "Sentiment trends over time (+/- 2 years)", x = "Period", y = "Mean sentiment score") +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5),
+        legend.position = "bottom",
+        legend.box.background = element_rect(color = "black", linewidth = 0.5),
+        legend.box.margin = margin(2, 2, 2, 2),
+        legend.key.width = unit(1.5, "cm"),  # Wider legend keys
+        legend.spacing.x = unit(0.5, "cm")  # Space between legend items)
+
+##Placebo test (Robustness check)
+placebo_data <- subset(aggregated_data, period == "Pre-Treatment")
+
+placebo_data$fake_post <- ifelse(placebo_data$date == max(placebo_data$date), 1, 0)
+
+placebo_lm <- lm(mean_sentiment ~ treatment + fake_post + treatment:fake_post, 
+                 data = placebo_data)
+
+summary(placebo_lm)
