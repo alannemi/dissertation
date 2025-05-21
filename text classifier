@@ -1,6 +1,6 @@
 #Code adapted from Dr. Zachary Dickson [MY580 - Applied Language Models Code](https://github.com/z-dickson/my580-applied-language-models/tree/main/code)
-#Importing, cleaning, and preparing the training data
 
+#Importing, cleaning, and preparing the training data
 pip install pandas matplotlib datasets evaluate accelerate scikit-learn ipywidgets numpy
 pip install 'transformers[torch]'
 
@@ -9,3 +9,155 @@ import pandas as pd
 from transformers import pipeline
 import matplotlib.pyplot as plt
 import numpy as np
+
+import re
+from google.colab import drive #Additional driver inserted when using Google Colab
+drive.mount('/content/drive')
+file_path = '/content/drive/My Drive/Colab Notebooks/combined_training_data-FINALv.csv'
+tele_data = pd.read_csv(file_path, sep=',')
+
+def remove_emojis(text): #Defining function to remove emojis and non-text characters
+    if not isinstance(text, str):
+        return text  # Return the original value if it's not a string
+    # Define the regex pattern for emojis
+    emoji_pattern = re.compile(
+        "["
+        "\U0001F600-\U0001F64F"  # emoticons
+        "\U0001F300-\U0001F5FF"  # symbols & pictographs
+        "\U0001F680-\U0001F6FF"  # transport & map symbols
+        "\U0001F700-\U0001F77F"  # alchemical symbols
+        "\U0001F780-\U0001F7FF"  # Geometric Shapes Extended
+        "\U0001F800-\U0001F8FF"  # Supplemental Arrows-C
+        "\U0001F900-\U0001F9FF"  # Supplemental Symbols and Pictographs
+        "\U0001FA00-\U0001FA6F"  # Chess Symbols
+        "\U0001FA70-\U0001FAFF"  # Symbols and Pictographs Extended-A
+        "\U00002702-\U000027B0"  # Dingbats
+        "\U000024C2-\U0001F251"  # Enclosed characters
+        "•"
+        "«"
+        "»"
+        "]+",
+        flags=re.UNICODE,
+    )
+    return emoji_pattern.sub(r'', text)
+
+tele_data['Message'] = tele_data['Message'].apply(remove_emojis) # Removing emojis from the 'message' column
+
+tele_data['Message'] = tele_data['Message'].str.replace('\n', ' ', regex=True) # Replacing newline characters with spaces
+
+print(tele_data.head())
+
+##Converting the labels from the dataset to numbers (integers) for the model
+label_dict = {
+    'control': 0,
+    'treatment': 1
+  }
+
+##Renaming the columns to `label` and `text`
+tele_data.rename(columns={'Message': 'text'}, inplace=True)
+
+##Converting the labels to categorical codes
+tele_data['labels'] = pd.Categorical(tele_data['labels']).codes
+
+#Importing RuBERT and classifying data
+
+##Creating another train/eval split to use when training the model
+from datasets import Dataset
+dataset = Dataset.from_pandas(tele_data[['text', 'labels']]).train_test_split(test_size=0.3)
+
+##Importing a tokenizer to tokenize the text data
+from transformers import AutoTokenizer
+tokenizer = AutoTokenizer.from_pretrained("sberbank-ai/ruBert-base") ##Importing tokenizer from RuBERT
+
+def tokenize_function(examples):
+    return tokenizer(examples["text"], padding="longest", truncation=True, max_length=512) # Added max_length
+
+tokenized_dataset = dataset.map(tokenize_function, batched=True)
+
+##Importing RuBERT model
+from transformers import AutoModelForSequenceClassification
+number_of_labels = int(tele_data['labels'].nunique())
+model = AutoModelForSequenceClassification.from_pretrained("sberbank-ai/ruBert-base",num_labels=number_of_labels, torch_dtype="auto")
+
+from transformers import TrainingArguments
+import evaluate
+
+training_args = TrainingArguments(output_dir="test_trainer")
+metric = evaluate.load("accuracy")
+
+def compute_metrics(eval_pred): #Using standard recommended parameters to evaluate accuracy
+    logits, labels = eval_pred
+    predictions = np.argmax(logits, axis=-1)
+    return metric.compute(predictions=predictions, references=labels)
+
+from transformers import TrainingArguments, Trainer
+training_args = TrainingArguments(output_dir="test_trainer", eval_strategy="epoch") #Setting evaluation strategy to each epoch
+
+##Creating and running training object
+trainer = Trainer(
+    model=model,
+    args=training_args,
+    train_dataset=tokenized_dataset['train'],
+    eval_dataset=tokenized_dataset['test'],
+    compute_metrics=compute_metrics
+)
+
+trainer.train()
+
+#Applying model onto the training dataset
+from transformers import TextClassificationPipeline
+
+classifier = TextClassificationPipeline(tokenizer=tokenizer,
+                                        model=model,
+                                        max_length = 512)
+
+validation = []
+
+for text in tele_data.text:
+    validation.append(classifier(text)[0]['label'])
+
+tele_data['predicted'] = validation
+
+tele_data['predicted_labels_integer'] = tele_data.predicted.str.split('_').str.get(1).astype(int)
+
+#Generating classification report
+
+from sklearn.metrics import classification_report
+print(classification_report(tele_data.labels.values, tele_data.predicted_labels_integer.values))
+
+#Applying model to the remainder of the data
+
+file_path = '/content/drive/My Drive/Colab Notebooks/raw_classed_telegram_data.csv'
+study_data = pd.read_csv(file_path, sep=',')
+
+study_data['Message'] = study_data['Message'].apply(remove_emojis) #Removing emojis from the 'message' column
+
+study_data['Message'] = study_data['Message'].str.replace('\n', ' ', regex=True) #Replacing newline characters with spaces
+
+print(study_data.head())
+
+study_data.rename(columns={'Message': 'text'}, inplace=True) #Renaming the columns to `label` and `text`
+
+##Using the classifier to predict the labels for the new (broader) dataset
+
+dataset = Dataset.from_dict({"text": study_data.text.tolist()}) # Convert to Hugging Face dataset
+
+def batch_predict(examples): # Batch processing function
+    outputs = classifier(examples["text"])
+    return {"labels": [output['label'] for output in outputs]}
+
+dataset = dataset.map(batch_predict, batched=True, batch_size=256) # Map with batched processing
+validation = dataset["labels"]
+
+study_data['predicted'] = validation #Creating a new column in the test dataset with the predicted labels
+
+study_data['predicted_labels_integer'] = study_data.predicted.str.split('_').str.get(1).astype(int) #Converting the predicted labels to integers
+
+study_data
+
+##Saving/exporting datagram
+import os
+df = pd.DataFrame(study_data)
+drive_path = '/content/drive/My Drive/Colab Notebooks/'
+output_file = os.path.join(drive_path, 'V4-classed_sorted_telegram_data.csv')
+df.to_csv(output_file, index=False)
