@@ -1,1 +1,155 @@
+library(tidyverse)
+library(quanteda)
+library(tidytext)
+library(topicmodels)
+library(stopwords)
+library(wordcloud)
+library(RColorBrewer)
 
+setwd("~/Desktop/gv390 dissertation")
+
+# Load data
+raw_data <- read_csv("V4_FINAL_classed_sentiment_telegram_data.csv") 
+
+cleaned_data_treated <- raw_data %>%
+  filter(predicted == "LABEL_1")
+
+cleaned_data_control <- raw_data %>%
+  filter(predicted == "LABEL_0")
+
+# Tokenization and preprocessing
+##TREATED GROUP
+toks_treated <- tokens(cleaned_data_treated$text, remove_punct = TRUE) %>%
+  tokens_remove(c(stopwords("ru"), stopwords("en"), "1", "tg", "@locatorrus", "@rybar", "t.me", "соловьёв", "telegram", "live", "|", "rvvoenkor", "soloviev.live", "эт", "сам", "сем")) %>%
+  tokens_wordstem(language = "russian")
+
+dfm_treated <- dfm(toks_treated)
+lda_model_treated <- LDA(convert(dfm_treated, to = "topicmodels"), k = 6)
+
+##CONTROL GROUP
+toks_control <- tokens(cleaned_data_control$text, remove_punct = TRUE) %>%
+  tokens_remove(c(stopwords("ru"), stopwords("en"), "1", "tg", "@locatorrus", "@rybar", "t.me", "соловьёв", "telegram", "live", "|", "rvvoenkor", "soloviev.live", "эт", "сам", "сем")) %>%
+  tokens_wordstem(language = "russian")
+
+dfm_control <- dfm(toks_control)
+lda_model_control <- LDA(convert(dfm_control, to = "topicmodels"), k = 6)
+
+#Plotting topics for control and treatment groups
+##TREATED GROUP
+topics_tidy_treated <- tidy(lda_model_treated, matrix = "beta")
+
+top_terms_treated <- topics_tidy_treated %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup() %>%
+  mutate(term = reorder_within(term, beta, topic))
+
+ggplot(top_terms_treated, aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~topic, scales = "free") +
+  scale_y_reordered() +  # Allows proper y-axis labeling per topic
+  labs(
+    title = "Top 6 topics (government posts), grouped by top 10 words per topic",
+    x = "Probability", y = "Term"
+  ) +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5)
+  )
+
+##CONTROL GROUP
+topics_tidy_control <- tidy(lda_model_control, matrix = "beta")
+
+top_terms_control <- topics_tidy_control %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup() %>%
+  mutate(term = reorder_within(term, beta, topic))
+
+ggplot(top_terms_control, aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~topic, scales = "free") +
+  scale_y_reordered() +
+  labs(
+    title = "Top 6 topics (non-government posts), grouped by top 10 words per topic",
+    x = "Probability", y = "Term"
+  ) +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+#Re-plotting topics with manually-assigned topic names (for visualisation purposes)
+##TREATED
+topic_names_treated <- c("Regional/Russian nationalism", "War and Ukraine", "Putin and Ukraine", "Russian nationalism (Miscellaneous)", "Russian military", "Russian government")
+
+topics_tidy_treated <- tidy(lda_model_treated, matrix = "beta")
+
+top_terms_treated <- topics_tidy_treated %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup() %>%
+  mutate(term = reorder_within(term, beta, topic),
+         topic_name = factor(topic_names_treated[topic], levels = topic_names_treated))
+
+ggplot(top_terms_treated, aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~topic_name, scales = "free") +
+  scale_y_reordered() +
+  labs(title = "Top 6 topics (government posts), grouped by top 10 words per topic",
+       x = "Probability", y = "Term") +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+##CONTROL
+topic_names_control <- c("Russia and Putin", "Miscellaneous", "War and armed conflict", "Russian domestic affairs", "Russia-Ukraine war", "International news")
+
+topics_tidy_control <- tidy(lda_model_control, matrix = "beta")
+
+top_terms_control <- topics_tidy_control %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup() %>%
+  mutate(term = reorder_within(term, beta, topic),
+         topic_name = factor(topic_names_control[topic], levels = topic_names_control))
+
+ggplot(top_terms_control, aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~topic_name, scales = "free") +
+  scale_y_reordered() +
+  labs(title = "Top 6 topics (non-government posts), grouped by top 10 words per topic",
+       x = "Probability", y = "Term") +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
+
+#Topic modelling of sample of smaller Telegram channels
+full_sample_data <- read_csv("TM1_cleaned_data.csv")
+
+toks_sample <- tokens(full_sample_data$text, remove_punct = TRUE) %>%
+  tokens_remove(c(stopwords("ru"), stopwords("en"), "1", "tg", "@locatorrus", "@rybar", "t.me", "соловьёв", "telegram", "live", "|", "rvvoenkor", "soloviev.live", "эт", "сам", "сем")) %>%
+  tokens_wordstem(language = "russian")
+
+dfm_sample <- dfm(toks_sample)
+lda_model_sample <- LDA(convert(dfm_sample, to = "topicmodels"), k = 6)
+
+topic_names_sample <- c("War and armed conflict", "Undefined", "Russia-Ukraine war", "Russia (general)", "Russian government and Ukraine", "Russian domestic affairs")
+
+topics_tidy_sample <- tidy(lda_model_sample, matrix = "beta")
+
+top_terms_sample <- topics_tidy_sample %>%
+  group_by(topic) %>%
+  slice_max(beta, n = 10) %>%
+  ungroup() %>%
+  mutate(term = reorder_within(term, beta, topic),
+         topic_name = factor(topic_names_sample[topic], levels = topic_names_sample))
+
+ggplot(top_terms_sample, aes(beta, term, fill = factor(topic))) +
+  geom_col(show.legend = FALSE) +
+  facet_wrap(~topic_name, scales = "free") +
+  scale_y_reordered() +
+  labs(title = "Top 6 topics (sample smaller channels), grouped by top 10 words per topic",
+       x = "Probability", y = "Term") +
+  theme(text = element_text(family = "serif"),
+        plot.title = element_text(hjust = 0.5, face = "bold"),
+        plot.subtitle = element_text(hjust = 0.5))
