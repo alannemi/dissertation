@@ -1,1 +1,51 @@
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+import torch
+import pandas as pd
+from google.colab import drive
+from torch.cuda.amp import autocast  # For mixed precision (FP16)
 
+#Mounting additional drivers when using Google Colab
+drive.mount('/content/drive')
+
+model_name = "blanchefort/rubert-base-cased-sentiment"  #Loading fine-tuned Ru-BERT model for sentiment analysis
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForSequenceClassification.from_pretrained(model_name)
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+model.to(device)
+
+#Defining function to tokenize text and predict sentiment score
+def get_sentiment_scores(texts):
+    inputs = tokenizer(texts, return_tensors="pt", truncation=True, padding=True, max_length=512).to(device)
+    with torch.no_grad():
+        with autocast():
+            outputs = model(**inputs)
+    probs = torch.nn.functional.softmax(outputs.logits, dim=-1)
+    return probs[:, 1].cpu().numpy()  #Returns positive class probabilities
+
+#Prepping sorted data (after passing through 'text classifier')
+file_path = '/content/drive/My Drive/Colab Notebooks/V4-classed_sorted_telegram_data.csv'
+study_data = pd.read_csv(file_path, sep=',')
+
+study_data['text'] = study_data['text'].astype(str) #Converting the 'text' column to strings and handle missing/NaN values
+
+print(study_data)
+
+batch_size = 128 #Processing text in batches
+sentiment_scores = []
+
+for i in range(0, len(study_data), batch_size):
+    batch_texts = study_data['text'].iloc[i:i + batch_size].tolist()
+    batch_scores = get_sentiment_scores(batch_texts)
+    sentiment_scores.extend(batch_scores)
+
+study_data['sentiment_score'] = sentiment_scores #Adding sentiment scores to the dataframe
+
+print(study_data) #Displaying the dataframe with sentiment scores
+
+#Saving final dataframe
+import os
+study_df = pd.DataFrame(study_data)
+drive_path = '/content/drive/My Drive/Colab Notebooks/'
+output_file = os.path.join(drive_path, 'V4_FINAL_classed_sentiment_telegram_data.csv')
+study_df.to_csv(output_file, index=False)
