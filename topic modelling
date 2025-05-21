@@ -47,14 +47,11 @@ ggplot(top_terms_treated, aes(beta, term, fill = factor(topic))) +
   geom_col(show.legend = FALSE) +
   facet_wrap(~topic, scales = "free") +
   scale_y_reordered() +  # Allows proper y-axis labeling per topic
-  labs(
-    title = "Top 6 topics (government posts), grouped by top 10 words per topic",
-    x = "Probability", y = "Term"
-  ) +
+  labs(title = "Top 6 topics (government posts), grouped by top 10 words per topic",
+    x = "Probability", y = "Term") +
   theme(text = element_text(family = "serif"),
         plot.title = element_text(hjust = 0.5, face = "bold"),
-        plot.subtitle = element_text(hjust = 0.5)
-  )
+        plot.subtitle = element_text(hjust = 0.5))
 
 ##CONTROL GROUP
 topics_tidy_control <- tidy(lda_model_control, matrix = "beta")
@@ -69,10 +66,8 @@ ggplot(top_terms_control, aes(beta, term, fill = factor(topic))) +
   geom_col(show.legend = FALSE) +
   facet_wrap(~topic, scales = "free") +
   scale_y_reordered() +
-  labs(
-    title = "Top 6 topics (non-government posts), grouped by top 10 words per topic",
-    x = "Probability", y = "Term"
-  ) +
+  labs(title = "Top 6 topics (non-government posts), grouped by top 10 words per topic",
+    x = "Probability", y = "Term") +
   theme(text = element_text(family = "serif"),
         plot.title = element_text(hjust = 0.5, face = "bold"),
         plot.subtitle = element_text(hjust = 0.5))
