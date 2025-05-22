@@ -37,8 +37,8 @@ aggregated_data <- data_raw_mutated %>%
 cutoff_date <- as.Date("2022-02-24")
 
 pre_treatment_means <- aggregated_data %>%
-  filter(date < cutoff_date) %>%  # Filter for post-treatment period
-  group_by(predicted) %>%  # Group by control/treatment group
+  filter(date < cutoff_date) %>%
+  group_by(predicted) %>%
   summarise(mean_sentiment_score = mean(mean_sentiment, na.rm = TRUE)) %>%
   pivot_wider(names_from = predicted, values_from = mean_sentiment_score)
 
@@ -46,8 +46,8 @@ print(pre_treatment_means)
 
 #Post-treatment means
 post_treatment_means <- aggregated_data %>%
-  filter(date >= cutoff_date) %>%  # Filter for post-treatment period
-  group_by(predicted) %>%  # Group by control/treatment group
+  filter(date >= cutoff_date) %>%
+  group_by(predicted) %>%
   summarise(mean_sentiment_score = mean(mean_sentiment, na.rm = TRUE)) %>%
   pivot_wider(names_from = predicted, values_from = mean_sentiment_score)
 
@@ -62,7 +62,7 @@ aggregated_data <- aggregated_data %>%
       predicted == "LABEL_1" & date >= cutoff_date ~ "treatment_after",
       TRUE ~ NA_character_))
 
-differences <- aggregated_data %>% # Calculate the mean sentiment_score for each of the four groups
+differences <- aggregated_data %>%
   group_by(group) %>%  # Group by the newly created group column
   summarise(mean_sentiment_score = mean(mean_sentiment, na.rm = TRUE))
 
@@ -83,7 +83,6 @@ plot_data <- plot_data %>%
   mutate(predicted = ifelse(predicted == "LABEL_0", "Control", "Treatment"))
 
 # Creating a counterfactual for the treatment group
-# Assume the counterfactual trend is parallel to the control group
 counterfactual_data <- plot_data %>%
   filter(predicted == "Control") %>%
   mutate(
@@ -103,7 +102,7 @@ aggregated_data <- aggregated_data %>%
     treatment = ifelse(condition == "treatment", 1, 0), 
     post = ifelse(date >= cutoff_date, 1, 0))
 
-#Estimation via lm()
+#DiD estimation via lm()
 did_model <- lm(mean_sentiment ~ treatment + post + treatment:post, data = aggregated_data)
 
 summary(did_model)
@@ -142,7 +141,7 @@ ggplot(aggregated_data, aes(x = mean_sentiment, fill = post)) +
     title = "Sentiment distribution before and after invastion of Ukraine",
     x = "Mean sentiment",
     y = "Density",
-    fill = "Period"  # This changes the legend title) +
+    fill = "Period"  +
   theme(text = element_text(family = "serif"),
         plot.title = element_text(hjust = 0.5, face = "bold"),
         plot.subtitle = element_text(hjust = 0.5),
@@ -219,7 +218,7 @@ ggplot(data_raw_mutated, aes(x = post_index, y = sentiment_score)) +
 
 
 #Establishing parallel trends (visually)
-aggregated_binned <- aggregated_data %>% # 1. Bin data into clear pre/post periods (adjust time windows as needed)
+aggregated_binned <- aggregated_data %>%
   mutate(
     period = case_when(date < cutoff_date - months(12) & date > cutoff_date - months(24) ~ "Early Pre-treatment",
                       date >= cutoff_date - months(12) & date < cutoff_date ~ "Late Pre-treatment",
@@ -249,7 +248,7 @@ ggplot(plot_data, aes(x = period, y = mean_sentiment, color = predicted, group =
   geom_vline(xintercept = 2.5, linetype = "dashed", color = "black", linewidth = 0.8) +
   scale_color_manual(name = "Group", labels = c("Control", "Treatment", "Treatment (Counterfactual)"), values = c("LABEL_0" = "#f8766d", "LABEL_1" = "#00bfc4")) +
   scale_linetype_manual(values = c("FALSE" = "solid", "TRUE" = "dashed"), labels = c("Actual", "Counterfactual"), name = "") +
-  scale_y_continuous(limits = c(0, 0.5), breaks = seq(0, 0.5, 0.1)) +  # Y-axis 0–1
+  scale_y_continuous(limits = c(0, 0.5), breaks = seq(0, 0.5, 0.1)) +
   labs(title = "Sentiment trends over time (+/- 2 years)", x = "Period", y = "Mean sentiment score") +
   theme(text = element_text(family = "serif"),
         plot.title = element_text(hjust = 0.5, face = "bold"),
@@ -257,8 +256,8 @@ ggplot(plot_data, aes(x = period, y = mean_sentiment, color = predicted, group =
         legend.position = "bottom",
         legend.box.background = element_rect(color = "black", linewidth = 0.5),
         legend.box.margin = margin(2, 2, 2, 2),
-        legend.key.width = unit(1.5, "cm"),  # Wider legend keys
-        legend.spacing.x = unit(0.5, "cm")  # Space between legend items)
+        legend.key.width = unit(1.5, "cm"), 
+        legend.spacing.x = unit(0.5, "cm")
 
 ##Placebo test (Robustness check)
 placebo_data <- subset(aggregated_data, period == "Pre-Treatment")
