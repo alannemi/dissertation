@@ -152,7 +152,7 @@ study_data['predicted_labels_integer'] = study_data.predicted.str.split('_').str
 
 study_data
 
-##Saving/exporting datagram
+##Saving/exporting dataframe
 import os
 df = pd.DataFrame(study_data)
 drive_path = '/content/drive/My Drive/Colab Notebooks/'
