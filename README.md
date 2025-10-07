@@ -1,8 +1,5 @@
-# “Будем всегда служить верою и правдою России”: An analysis of pro-government sentiments on Russian Telegram after the 2022 invasion of Ukraine
+# Digital Authoritarianism in Russia Since the 2022 Invasion of Ukraine
 
 ***Project reference code***
 
-GV390: Government Dissertation Option, 2024/25 <br>
-London School of Economics and Political Science
-
-**Candidate number: 37464**
+*Code used in initial submission of undergraduate dissertation in Government at the London School of Economics and Political Science*
