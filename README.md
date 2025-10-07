@@ -3,5 +3,7 @@
 *Code used in initial submission of undergraduate dissertation in Government at the London School of Economics and Political Science*
 
 Author: Alan Nemirovski
+
 Initial project submitted: May 2025
+
 Last update: June 2025
