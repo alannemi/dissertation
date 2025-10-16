@@ -4,10 +4,10 @@ from telethon.tl.functions.messages import GetHistoryRequest
 from datetime import datetime
 import csv
 
-#Accessing the API
-api_id = '25790525'
-api_hash = '922f9265576c60004d90aa9f76053c4b'
-phone_number = '+447883067749'
+#Accessing the API - API ID and Hash can be generated through Telegram developer website
+api_id = '[INSERT API ID]' #Replace with your api id 
+api_hash = '[INSERT API HASH]' #replace with your api hash here
+phone_number = '[INSERT NUMBER]' #Replace with your phone number
 channel_username = 'Z_strana'  #Replace with target channel - re-run code for every channel that needs to be scraped
 
 start_date = datetime(1970, 1, 1)  #Earliest possible date
